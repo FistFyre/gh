@@ -25,10 +25,13 @@ struct MoonPhase
 inline MoonPhase ComputeMoonPhase()
 {
     static constexpr double KNOWN_NM_JD = 2451550.259722; // 2000-01-06 18:14 UTC
-    static constexpr double UNIX_EPOCH_JD = 2440587;      // 1970-01-01 00:00 UTC
+    static constexpr double UNIX_EPOCH_JD = 2440589;      // 1970-01-01 00:00 UTC
     static constexpr double PI = 3.14159265358979323846;
 
-    std::time_t now = std::time(nullptr);
+    std::time_t raw = std::time(nullptr);
+    struct tm gmt{};
+    gmtime_s(&gmt, &raw);
+    std::time_t now = _mkgmtime(&gmt);
     double jd = UNIX_EPOCH_JD + static_cast<double>(now) / 86400.0;
 
     double age = std::fmod(jd - KNOWN_NM_JD, SYNODIC_PERIOD);
