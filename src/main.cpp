@@ -346,14 +346,50 @@ static int LayoutPopup(HDC hdc, bool paint, const MoonPhase& m)
     }
     else
     {
-        StringCchPrintfW(header, ARRAYSIZE(header), L"%s  \u2022  %.1f days until %s", m.phaseName, m.daysToNext, m.nextMainName);
+        int wholeDays = (int)m.daysToNext;
+        int remHours  = (int)((m.daysToNext - wholeDays) * 24.0);
+        StringCchPrintfW(header, ARRAYSIZE(header), L"%s  \u2022  %d days, %d hours until %s", m.phaseName, wholeDays, remHours, m.nextMainName);
     }
     y += TextBlock(hdc, POPUP_PAD, y, iw, header, RGB(0, 0, 0), hBold, paint) + 4;
 
     // Age / illumination  (normal, dark grey)
     wchar_t info[128];
     StringCchPrintfW(info, ARRAYSIZE(info), L"Age: %.1f / %.1f days  \u2022  Illumination: %.0f%%", m.age, SYNODIC_PERIOD, m.illumination * 100.0);
-    y += TextBlock(hdc, POPUP_PAD, y, iw, info, RGB(90, 90, 90), hNorm, paint) + 8;
+    y += TextBlock(hdc, POPUP_PAD, y, iw, info, RGB(90, 90, 90), hNorm, paint) + 6;
+
+    // Progress bar – fraction of current phase period elapsed (0% = just entered, 100% = about to transition)
+    {
+        double phaseLen = SYNODIC_PERIOD / 4.0;
+        double progress = 1.0 - (m.daysToNext / phaseLen);
+        if (progress < 0.0) progress = 0.0;
+        if (progress > 1.0) progress = 1.0;
+
+        const int barH = 10;
+        if (paint)
+        {
+            RECT track = { POPUP_PAD, y, POPUP_PAD + iw, y + barH };
+            HBRUSH hTrack = CreateSolidBrush(RGB(220, 220, 220));
+            FillRect(hdc, &track, hTrack);
+            DeleteObject(hTrack);
+
+            int fillW = (int)(iw * progress);
+            if (fillW > 0)
+            {
+                RECT fillR = { POPUP_PAD, y, POPUP_PAD + fillW, y + barH };
+                HBRUSH hFill = CreateSolidBrush(RGB(255, 180, 40));
+                FillRect(hdc, &fillR, hFill);
+                DeleteObject(hFill);
+            }
+
+            HPEN hBarPen = CreatePen(PS_SOLID, 1, RGB(180, 180, 180));
+            HPEN hBarOld = (HPEN)SelectObject(hdc, hBarPen);
+            SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
+            Rectangle(hdc, POPUP_PAD, y, POPUP_PAD + iw, y + barH);
+            SelectObject(hdc, hBarOld);
+            DeleteObject(hBarPen);
+        }
+        y += barH + 6;
+    }
 
     // Separator line
     if (paint)
@@ -499,7 +535,7 @@ static void DrawNameColumn(HDC hdc, const wchar_t* csv, int cx, int cy, HFONT fo
     SelectObject(hdc, prev);
 }
 
-static void DrawMoonChart(HDC hdc, RECT rc, int currentPhaseIndex)
+static void DrawMoonChart(HDC hdc, RECT rc, const MoonPhase& m)
 {
     static const double PI = 3.14159265358979;
 
@@ -630,7 +666,7 @@ static void DrawMoonChart(HDC hdc, RECT rc, int currentPhaseIndex)
     // ---- Current-phase highlight – white wedge outline drawn on top ----
     {
         // Convert phaseIndex to drawing slot (slot 0 = Full Moon at top, CW)
-        int slot = (currentPhaseIndex + 4) % 8;
+        int slot = (m.phaseIndex + 4) % 8;
         double startCw = slot * 45.0 - 22.5;   // section start boundary, degrees CW from N
         // AngleArc angles: CCW from east (positive x-axis); clockwise sweep is negative
         auto gdiStart = static_cast<FLOAT>(90.0 - startCw);
@@ -651,9 +687,30 @@ static void DrawMoonChart(HDC hdc, RECT rc, int currentPhaseIndex)
         DeleteObject(hWhi);
     }
 
+    // ---- Phase-progress marker – filled circle on the outer edge showing exact position ----
+    // Chart layout: Full Moon at top (0° CW), New Moon at bottom (180° CW).
+    // phaseFrac=0 → New Moon → 180°; phaseFrac=0.5 → Full Moon → 0°.
+    {
+        double markerCw = std::fmod(m.phaseFrac * 360.0 + 180.0, 360.0);
+        double markerRad = markerCw * PI / 180.0;
+        int mx = cx + (int)(R * sin(markerRad));
+        int my = cy - (int)(R * cos(markerRad));
+        const int mr = 8;
+
+        HBRUSH hMkBr = CreateSolidBrush(RGB(255, 230, 80));
+        HPEN   hMkPen = CreatePen(PS_SOLID, 2, RGB(30, 30, 30));
+        HPEN   hMkOld = (HPEN)SelectObject(hdc, hMkPen);
+        HBRUSH hMkBrOld = (HBRUSH)SelectObject(hdc, hMkBr);
+        Ellipse(hdc, mx - mr, my - mr, mx + mr + 1, my + mr + 1);
+        SelectObject(hdc, hMkOld);
+        SelectObject(hdc, hMkBrOld);
+        DeleteObject(hMkBr);
+        DeleteObject(hMkPen);
+    }
+
     // ---- Donation text (bottom centre) ----
     {
-        static const wchar_t* DONATION_TEXT = L"Version 1.0 - Enjoying the tool? In-game donations are always appreciated - FistFyre@Arisetu";
+        static const wchar_t* DONATION_TEXT = L"Version 1.2 - Enjoying the tool? In-game donations are always appreciated - FistFyre@Arisetu";
         HFONT prev = (HFONT)SelectObject(hdc, hLegF);
         SetTextColor(hdc, RGB(60, 60, 60));
         SetBkMode(hdc, TRANSPARENT);
@@ -694,7 +751,8 @@ static LRESULT CALLBACK ChartWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
         HDC memDC = CreateCompatibleDC(hdc);
         HBITMAP bmp = CreateCompatibleBitmap(hdc, rc.right, rc.bottom);
         HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, bmp);
-        DrawMoonChart(memDC, rc, ComputeMoonPhase().phaseIndex);
+        MoonPhase chartPhase = ComputeMoonPhase();
+        DrawMoonChart(memDC, rc, chartPhase);
         BitBlt(hdc, 0, 0, rc.right, rc.bottom, memDC, 0, 0, SRCCOPY);
         SelectObject(memDC, oldBmp);
         DeleteObject(bmp);
