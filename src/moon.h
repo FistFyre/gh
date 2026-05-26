@@ -13,13 +13,15 @@ static constexpr double SYNODIC_PERIOD = 29.53058867;
 
 struct MoonPhase
 {
-    double         age;          // days since last new moon  [0, SYNODIC_PERIOD)
-    double         phaseFrac;    // age / SYNODIC_PERIOD       [0, 1)
-    double         illumination; // fraction of disk lit       [0, 1]
-    int            phaseIndex;   // 0–7 (see PHASE_NAMES below)
-    const wchar_t* phaseName;    // e.g. "Waxing Gibbous"
-    const wchar_t* nextMainName; // e.g. "Full Moon"
-    double         daysToNext;   // days until next main phase (new/quarter/full)
+    double         age;              // days since last new moon  [0, SYNODIC_PERIOD)
+    double         phaseFrac;        // age / SYNODIC_PERIOD       [0, 1)
+    double         illumination;     // fraction of disk lit       [0, 1]
+    int            phaseIndex;       // 0–7 (see PHASE_NAMES below)
+    const wchar_t* phaseName;        // e.g. "Waxing Gibbous"
+    const wchar_t* nextMainName;     // e.g. "Full Moon"
+    double         daysToNext;       // days until next main phase (new/quarter/full)
+    double         hoursToNextPhase; // hours until next of the 8 named phases
+    const wchar_t* nextPhaseName;    // name of the next 8-phase
 };
 
 inline MoonPhase ComputeMoonPhase()
@@ -79,6 +81,10 @@ inline MoonPhase ComputeMoonPhase()
         daysToNext = (1.0 + nextFrac - phaseFrac) * SYNODIC_PERIOD;
     }
 
+    // Hours until next of the 8 named phases
+    double fracInPhase = std::fmod(shifted, 1.0 / 8.0);
+    double daysToNextPhase = (1.0 / 8.0 - fracInPhase) * SYNODIC_PERIOD;
+
     MoonPhase m;
     m.age = age;
     m.phaseFrac = phaseFrac;
@@ -87,5 +93,7 @@ inline MoonPhase ComputeMoonPhase()
     m.phaseName = PHASE_NAMES[phaseIndex];
     m.nextMainName = MAIN_NAMES[nextQi];
     m.daysToNext = daysToNext;
+    m.hoursToNextPhase = daysToNextPhase * 24.0;
+    m.nextPhaseName = PHASE_NAMES[(phaseIndex + 1) % 8];
     return m;
 }

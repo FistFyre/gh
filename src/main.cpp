@@ -355,7 +355,12 @@ static int LayoutPopup(HDC hdc, bool paint, const MoonPhase& m)
     // Age / illumination  (normal, dark grey)
     wchar_t info[128];
     StringCchPrintfW(info, ARRAYSIZE(info), L"Age: %.1f / %.1f days  \u2022  Illumination: %.0f%%", m.age, SYNODIC_PERIOD, m.illumination * 100.0);
-    y += TextBlock(hdc, POPUP_PAD, y, iw, info, RGB(90, 90, 90), hNorm, paint) + 6;
+    y += TextBlock(hdc, POPUP_PAD, y, iw, info, RGB(90, 90, 90), hNorm, paint) + 2;
+
+    // Hours until next phase change (normal, dark grey)
+    wchar_t nextPhaseInfo[128];
+    StringCchPrintfW(nextPhaseInfo, ARRAYSIZE(nextPhaseInfo), L"%.0f hours until %s", m.hoursToNextPhase, m.nextPhaseName);
+    y += TextBlock(hdc, POPUP_PAD, y, iw, nextPhaseInfo, RGB(90, 90, 90), hNorm, paint) + 6;
 
     // Progress bar – fraction of current phase period elapsed (0% = just entered, 100% = about to transition)
     {
