@@ -6,6 +6,7 @@
 // Right-click:       context menu  (Exit)
 
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #define UNICODE
 #define _UNICODE
 
@@ -357,10 +358,25 @@ static int LayoutPopup(HDC hdc, bool paint, const MoonPhase& m)
     StringCchPrintfW(info, ARRAYSIZE(info), L"Age: %.1f / %.1f days  \u2022  Illumination: %.0f%%", m.age, SYNODIC_PERIOD, m.illumination * 100.0);
     y += TextBlock(hdc, POPUP_PAD, y, iw, info, RGB(90, 90, 90), hNorm, paint) + 2;
 
-    // Hours until next phase change (normal, dark grey)
+    // Hours + minutes until next phase change (normal, dark grey)
     wchar_t nextPhaseInfo[128];
-    StringCchPrintfW(nextPhaseInfo, ARRAYSIZE(nextPhaseInfo), L"%.0f hours until %s", m.hoursToNextPhase, m.nextPhaseName);
-    y += TextBlock(hdc, POPUP_PAD, y, iw, nextPhaseInfo, RGB(90, 90, 90), hNorm, paint) + 6;
+    {
+        int npHours = (int)m.hoursToNextPhase;
+        int npMins  = (int)((m.hoursToNextPhase - npHours) * 60.0);
+        StringCchPrintfW(nextPhaseInfo, ARRAYSIZE(nextPhaseInfo), L"%d hours %d min until %s", npHours, npMins, m.nextPhaseName);
+    }
+    y += TextBlock(hdc, POPUP_PAD, y, iw, nextPhaseInfo, RGB(90, 90, 90), hNorm, paint) + 2;
+
+    // Next full moon – local date and time (normal, dark grey)
+    wchar_t fullMoonInfo[128];
+    {
+        struct tm localFM{};
+        localtime_s(&localFM, &m.nextFullMoonTime);
+        wchar_t fmBuf[64];
+        wcsftime(fmBuf, ARRAYSIZE(fmBuf), L"%d %b %Y  %H:%M", &localFM);
+        StringCchPrintfW(fullMoonInfo, ARRAYSIZE(fullMoonInfo), L"Next Full Moon: %s (local)", fmBuf);
+    }
+    y += TextBlock(hdc, POPUP_PAD, y, iw, fullMoonInfo, RGB(90, 90, 90), hNorm, paint) + 6;
 
     // Progress bar – fraction of current phase period elapsed (0% = just entered, 100% = about to transition)
     {
@@ -548,7 +564,7 @@ static void DrawMoonChart(HDC hdc, RECT rc, const MoonPhase& m)
     int h = rc.bottom - rc.top;
     int cx = rc.left + w / 2;
     int cy = rc.top + h / 2;
-    int R = min(w, h) * 40 / 100;   // outer radius
+    int R = std::min(w, h) * 40 / 100;   // outer radius
     int Rm = R * 57 / 100;          // outer/inner ring boundary
 
     // ---- Background ----
